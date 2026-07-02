@@ -1,0 +1,100 @@
+---
+# ============================================================
+# 03-servicos.yml - PowerBuilder
+# ============================================================
+# Fase 3: Configuração dos serviços PowerBuilder
+# Passos: 4 (regedit CFLCL), 8 e 9 (pastas Serviços Energisa),
+#         10 (compartilhar Arquivos Comuns)
+# ============================================================
+
+- name: Configuração dos Serviços PowerBuilder
+  hosts: POC-Powerbuilder
+  gather_facts: yes
+
+  vars:
+    # Usuário de serviço das pastas PowerBuilder
+    svc_user: "SVC-DISCO"
+
+    # Servidor de referência da mesma região
+    # Alterar de acordo com a região do novo servidor
+    servidor_referencia: "MGSERVA-PLH1"
+
+    # Caminho da pasta Serviços Energisa no servidor de referência
+    pasta_servicos_origem: "\\\\{{ servidor_referencia }}\\Serviços Energisa"
+
+    # Caminho destino no novo servidor
+    pasta_servicos_destino: "C:\\Serviços Energisa"
+
+    # Caminho da pasta Arquivos Comuns
+    pasta_arquivos_comuns: "C:\\Energisa_Arquivos_Comuns"
+
+  tasks:
+
+    # ----------------------------------------------------------
+    # PASSO 4 — Exportar/importar chave CFLCL do regedit
+    # ----------------------------------------------------------
+    - name: "Passo 4 | Exportar chave CFLCL do servidor de referência"
+      ansible.windows.win_shell: |
+        reg export "HKLM\SOFTWARE\WOW6432Node\CFLCL_Serviços" 
+        "C:\temp\cflcl_export.reg" /y
+      delegate_to: "{{ servidor_referencia }}"
+      # delegate_to = executa esse comando NO servidor de referência
+      # não no servidor novo
+
+    - name: "Passo 4 | Copiar arquivo de registro para o novo servidor"
+      ansible.windows.win_copy:
+        src: "\\\\{{ servidor_referencia }}\\temp\\cflcl_export.reg"
+        dest: "C:\\temp\\cflcl_export.reg"
+        remote_src: yes
+
+    - name: "Passo 4 | Importar chave CFLCL no novo servidor"
+      ansible.windows.win_shell: |
+        reg import "C:\temp\cflcl_export.reg"
+      # Importa as configurações dos serviços PowerBuilder
+      # Define quais serviços vão executar no servidor
+
+    # ----------------------------------------------------------
+    # PASSO 8 e 9 — Copiar pasta Serviços Energisa
+    # ----------------------------------------------------------
+    - name: "Passo 8 | Criar pasta Serviços Energisa no destino"
+      ansible.windows.win_file:
+        path: "{{ pasta_servicos_destino }}"
+        state: directory
+
+    - name: "Passo 9 | Copiar pasta Serviços Energisa do servidor de referência"
+      ansible.windows.win_robocopy:
+        src: "{{ pasta_servicos_origem }}"
+        dest: "{{ pasta_servicos_destino }}"
+        flags: /E /COPYALL /R:3 /W:5
+      # /E = copia subpastas incluindo vazias
+      # /COPYALL = copia tudo (atributos, permissões)
+      # /R:3 = tenta 3 vezes se der erro
+      # /W:5 = espera 5 segundos entre tentativas
+
+    # ----------------------------------------------------------
+    # PASSO 10 — Compartilhar pasta Arquivos Comuns
+    # ----------------------------------------------------------
+    - name: "Passo 10 | Criar pasta Energisa Arquivos Comuns"
+      ansible.windows.win_file:
+        path: "{{ pasta_arquivos_comuns }}"
+        state: directory
+
+    - name: "Passo 10 | Copiar pasta Arquivos Comuns do servidor de referência"
+      ansible.windows.win_robocopy:
+        src: "\\\\{{ servidor_referencia }}\\Energisa_Arquivos_Comuns"
+        dest: "{{ pasta_arquivos_comuns }}"
+        flags: /E /COPYALL /R:3 /W:5
+
+    - name: "Passo 10 | Compartilhar pasta Arquivos Comuns"
+      ansible.windows.win_share:
+        name: "Energisa_Arquivos_Comuns"
+        path: "{{ pasta_arquivos_comuns }}"
+        state: present
+
+    - name: "Passo 10 | Adicionar permissão full control para SVC-DISCO"
+      ansible.windows.win_acl:
+        path: "{{ pasta_arquivos_comuns }}"
+        user: "{{ svc_user }}"
+        rights: FullControl
+        type: allow
+        state: present

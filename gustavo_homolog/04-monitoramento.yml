@@ -1,0 +1,90 @@
+---
+# ============================================================
+# 04-monitoramento.yml - PowerBuilder
+# ============================================================
+# Fase 4: Instalação dos agentes de monitoramento
+# Passos: 6 (Metricbeat e Zabbix)
+# ============================================================
+# ⚠️ PENDÊNCIA: Confirmar com Alessandro onde ficam os
+# instaladores do Metricbeat e Zabbix no file server
+# ============================================================
+
+- name: Instalação dos Agentes de Monitoramento
+  hosts: POC-Powerbuilder
+  gather_facts: yes
+
+  vars:
+    # Caminho dos instaladores no file server
+    # Confirmar com Alessandro o caminho correto
+    caminho_instaladores: "\\\\MGDSC\\instaladores"
+
+    # Versão do Metricbeat
+    # Confirmar versão utilizada no ambiente
+    metricbeat_versao: "8.x"
+
+    # Caminho de configuração do Metricbeat
+    # Pegar de um servidor já monitorado
+    metricbeat_config_origem: "\\\\MGSERVA-PLH1\\C$\\Program Files\\Elastic\\metricbeat.yml"
+
+    # Caminho de configuração do Zabbix
+    # Pegar de um servidor já monitorado
+    zabbix_config_origem: "\\\\MGSERVA-PLH1\\C$\\Program Files\\Zabbix Agent\\zabbix_agentd.conf"
+
+  tasks:
+
+    # ----------------------------------------------------------
+    # PASSO 6 — Instalar Metricbeat (agente ELK)
+    # ----------------------------------------------------------
+    - name: "Passo 6 | Instalar Metricbeat"
+      ansible.windows.win_package:
+        path: "{{ caminho_instaladores }}\\Metricbeat\\metricbeat-setup.msi"
+        state: present
+      ignore_errors: yes
+      # ignore_errors = continua mesmo se já estiver instalado
+
+    - name: "Passo 6 | Copiar configuração do Metricbeat de servidor de referência"
+      ansible.windows.win_copy:
+        src: "{{ metricbeat_config_origem }}"
+        dest: "C:\\Program Files\\Elastic\\metricbeat.yml"
+        remote_src: yes
+      # Copia o metricbeat.yml de um servidor já monitorado
+      # Assim não precisa configurar do zero
+
+    - name: "Passo 6 | Iniciar serviço do Metricbeat"
+      ansible.windows.win_service:
+        name: metricbeat
+        state: started
+        start_mode: auto
+      # start_mode: auto = inicia automaticamente quando o servidor ligar
+
+    # ----------------------------------------------------------
+    # PASSO 6 — Instalar Zabbix Agent
+    # ----------------------------------------------------------
+    - name: "Passo 6 | Instalar Zabbix Agent"
+      ansible.windows.win_package:
+        path: "{{ caminho_instaladores }}\\Zabbix\\zabbix_agent-setup.msi"
+        state: present
+      ignore_errors: yes
+
+    - name: "Passo 6 | Copiar configuração do Zabbix de servidor de referência"
+      ansible.windows.win_copy:
+        src: "{{ zabbix_config_origem }}"
+        dest: "C:\\Program Files\\Zabbix Agent\\zabbix_agentd.conf"
+        remote_src: yes
+      # Copia o conf de um servidor já monitorado
+      # Garante que aponta pro servidor Zabbix correto
+
+    - name: "Passo 6 | Iniciar serviço do Zabbix Agent"
+      ansible.windows.win_service:
+        name: "Zabbix Agent"
+        state: started
+        start_mode: auto
+
+    # ----------------------------------------------------------
+    # BOA PRÁTICA — Reiniciar servidor ao final
+    # ----------------------------------------------------------
+    - name: "Final | Reiniciar servidor após todas as instalações"
+      ansible.windows.win_reboot:
+        reboot_timeout: 600
+        # Aguarda até 10 minutos para o servidor voltar
+        msg: "Reiniciando servidor após configuração PowerBuilder"

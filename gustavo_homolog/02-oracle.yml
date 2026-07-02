@@ -1,0 +1,85 @@
+---
+# ============================================================
+# 02-oracle.yml - PowerBuilder
+# ============================================================
+# Fase 2: Instalação e configuração do Oracle Client
+# Passos: 13 (instalar Oracle), 14 (configurar registro),
+#         15 (copiar TNS Names), 16 (compartilhar pasta)
+# ============================================================
+
+- name: Instalação e Configuração do Oracle Client
+  hosts: POC-Powerbuilder
+  gather_facts: yes
+
+  vars:
+    # Versão do Oracle Client: "12C" ou "19C"
+    oracle_versao: "12C"
+
+    # Pasta Oracle gerada automaticamente pela versão
+    oracle_pasta: "{{ 'ora121' if oracle_versao == '12C' else 'ora191' }}"
+
+    # Caminho base do Oracle no servidor
+    oracle_base: "C:\\oracle\\{{ oracle_pasta }}"
+
+    # Servidor onde estão os arquivos TNS atualizados
+    # Alterar de acordo com a região
+    servidor_tns: "\\\\MGDSC\\NETLOGON\\Oracle"
+
+  tasks:
+
+    # ----------------------------------------------------------
+    # PASSO 13 — Instalar Oracle Client
+    # ----------------------------------------------------------
+    - name: "Passo 13 | Criar estrutura de pastas do Oracle"
+      ansible.windows.win_file:
+        path: "{{ oracle_base }}"
+        state: directory
+
+    - name: "Passo 13 | Instalar Oracle Client {{ oracle_versao }}"
+      ansible.windows.win_package:
+        path: "\\\\MGDSC\\instaladores\\Oracle\\{{ oracle_versao }}\\setup.exe"
+        arguments:
+          - "-silent"
+          - "-responseFile"
+          - "\\\\MGDSC\\instaladores\\Oracle\\{{ oracle_versao }}\\response.rsp"
+        state: present
+      # Ignora erro se Oracle já estiver instalado
+      ignore_errors: yes
+
+    # ----------------------------------------------------------
+    # PASSO 14 — Configurar registro Oracle (NLS_LANG)
+    # ----------------------------------------------------------
+    - name: "Passo 14 | Configurar NLS_LANG no registro Oracle"
+      ansible.windows.win_regedit:
+        path: "HKLM:\\SOFTWARE\\WOW6432Node\\ORACLE\\KEY_OraClient{{ oracle_versao }}_home1"
+        name: NLS_LANG
+        data: "AMERICAN_AMERICA.WE8DEC"
+        type: string
+      # NLS_LANG precisa ser AMERICAN — não Brasil
+      # Sem isso o banco de dados não se comunica corretamente
+
+    # ----------------------------------------------------------
+    # PASSO 15 — Copiar TNS Names e SQL.ora
+    # ----------------------------------------------------------
+    - name: "Passo 15 | Copiar arquivo tnsnames.ora"
+      ansible.windows.win_copy:
+        src: "{{ servidor_tns }}\\tnsnames.ora"
+        dest: "{{ oracle_base }}\\network\\admin\\tnsnames.ora"
+        remote_src: yes
+
+    - name: "Passo 15 | Copiar arquivo sqlnet.ora"
+      ansible.windows.win_copy:
+        src: "{{ servidor_tns }}\\sqlnet.ora"
+        dest: "{{ oracle_base }}\\network\\admin\\sqlnet.ora"
+        remote_src: yes
+
+    # ----------------------------------------------------------
+    # PASSO 16 — Compartilhar pasta Oracle\admin como tnsname$
+    # ----------------------------------------------------------
+    - name: "Passo 16 | Compartilhar pasta admin como tnsname$"
+      ansible.windows.win_share:
+        name: "tnsname$"
+        path: "{{ oracle_base }}\\network\\admin"
+        state: present
+        # Cifrão no final deixa o compartilhamento oculto
+        full: Everyone

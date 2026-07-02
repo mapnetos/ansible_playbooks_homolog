@@ -1,0 +1,56 @@
+---
+# ============================================================
+# 01-config-inicial.yml - PowerBuilder
+# ============================================================
+# Fase 1: Configuração inicial do servidor
+# Passos: 1 (fuso horário), 2 (firewall), 3 (pasta temp)
+# ============================================================
+
+- name: Configuração Inicial do Servidor PowerBuilder
+  hosts: POC-Powerbuilder
+  gather_facts: yes
+
+  vars:
+    # Fuso horário de acordo com a região do servidor
+    # MG, SP, RJ, ES, BA → E. South America Standard Time
+    # MT, MS → Central America Standard Time  
+    # AC → SA Pacific Standard Time
+    fuso_horario: "E. South America Standard Time"
+
+  tasks:
+
+    # ----------------------------------------------------------
+    # PASSO 1 — Alterar fuso horário e formato de data
+    # ----------------------------------------------------------
+    - name: "Passo 1 | Alterar fuso horário do servidor"
+      community.windows.win_timezone:
+        timezone: "{{ fuso_horario }}"
+
+    # ----------------------------------------------------------
+    # PASSO 2 — Desabilitar Firewall Windows
+    # ----------------------------------------------------------
+    - name: "Passo 2 | Desabilitar Firewall - Perfil Domain"
+      community.windows.win_firewall:
+        profiles:
+          - Domain
+        state: disabled
+
+    - name: "Passo 2 | Desabilitar Firewall - Perfil Private"
+      community.windows.win_firewall:
+        profiles:
+          - Private
+        state: disabled
+
+    - name: "Passo 2 | Desabilitar Firewall - Perfil Public"
+      community.windows.win_firewall:
+        profiles:
+          - Public
+        state: disabled
+
+    # ----------------------------------------------------------
+    # PASSO 3 — Criar pasta C:\temp
+    # ----------------------------------------------------------
+    - name: "Passo 3 | Criar pasta C:\\temp"
+      ansible.windows.win_file:
+        path: C:\temp
+        state: directory

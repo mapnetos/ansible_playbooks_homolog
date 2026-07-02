@@ -1,0 +1,26 @@
+---
+# ============================================================
+# main.yml - PowerBuilder
+# ============================================================
+# Playbook principal que chama todos os outros em sequência
+# Execute esse arquivo para rodar a configuração completa
+#
+# Ordem de execução:
+# 1. 01-config-inicial.yml  → fuso, firewall, pasta temp
+# 2. 02-oracle.yml          → Oracle Client e TNS Names
+# 3. 03-servicos.yml        → pastas e serviços PowerBuilder
+# 4. 04-monitoramento.yml   → Metricbeat e Zabbix
+# ============================================================
+
+---
+- name: "FASE 1 | Configuração Inicial"
+  import_playbook: 01-config-inicial.yml
+
+- name: "FASE 2 | Oracle Client"
+  import_playbook: 02-oracle.yml
+
+- name: "FASE 3 | Serviços PowerBuilder"
+  import_playbook: 03-servicos.yml
+
+- name: "FASE 4 | Monitoramento"
+  import_playbook: 04-monitoramento.yml
