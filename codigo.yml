@@ -1,0 +1,134 @@
+---
+- name: Deploy PowerBuilder Application
+  hosts: all
+  gather_facts: yes
+
+  # =========================================================
+  # DECLARAÇÃO DE VARIÁVEIS GLOBAIS
+  # =========================================================
+  vars:
+    # Configurações do Oracle
+    oracle_version: "12"
+    oracle_nls_lang: "AMERICAN_AMERICA.WE8DEC"
+    
+    # Caminhos Locais (Destinos no Servidor Windows)
+    dir_temp: "C:\\temp"
+    dir_servicos: "C:\\Servicos_Energisa"
+    dir_arquivos_comuns: "C:\\Energisa_Arquivos_Comuns"
+    dir_oracle_base: "C:\\Oracle"
+    
+    # Caminhos de Rede (Origem dos Arquivos na Energisa)
+    rede_servicos: "\\\\mgserviaplh1\\c$\\Servicos_Energisa"
+    rede_arquivos_comuns: "\\\\acserviaplh3\\c$\\Energisa_Arquivos_Comuns"
+    rede_oracle_instalador: "\\\\fileserver\\dsl\\02APLICATIVOS\\Oracle_Client{{ oracle_version }}c\\cliente{{ oracle_version }}cx64"
+    rede_tns: "\\\\MGDCS10001\\netlogon\\oracle"
+
+  # =========================================================
+  # INÍCIO DAS TAREFAS
+  # =========================================================
+  tasks:
+    # ---------------------------------------------------------
+    # PASSO 1: FUSO HORÁRIO E REGIÃO
+    # ---------------------------------------------------------
+    - name: 1.1 Extrair o prefixo do servidor (ex: EMT, EAC)
+      ansible.builtin.set_fact:
+        prefixo: "{{ inventory_hostname[0:3] | upper }}"
+
+    - name: 1.2 Definir Fuso Horario baseado no prefixo
+      ansible.windows.win_timezone:
+        timezone: >-
+          {% if prefixo == 'EMT' %}SA Western Standard Time
+          {% elif prefixo == 'EAC' %}SA Pacific Standard Time
+          {% else %}E. South America Standard Time{% endif %}
+
+    - name: 1.3 Configurar Regiao (Brasil) e Formatos
+      ansible.windows.win_region:
+        format: pt-BR
+
+    # ---------------------------------------------------------
+    # PASSO 2 E 3: FIREWALL E PASTA TEMP
+    # ---------------------------------------------------------
+    - name: 2. Desabilitar Firewall (Domain, Private e Public)
+      ansible.windows.win_shell: Set-NetFirewallProfile -Profile Domain,Public,Private -Enabled False
+
+    - name: 3. Criar pasta temporaria de compartilhamento
+      ansible.windows.win_file:
+        path: "{{ dir_temp }}"
+        state: directory
+
+    # ---------------------------------------------------------
+    # PASSO 4: REGISTRO CFLCL
+    # ---------------------------------------------------------
+    - name: 4. Importar chaves de registro CFLCL
+      ansible.windows.win_shell: |
+        reg.exe import "{{ rede_servicos }}\Registros_Base\CFLCL_{{ prefixo }}.reg"
+
+    # ---------------------------------------------------------
+    # PASSO 8, 9 E 10: SERVIÇOS ENERGISA E COMPARTILHAMENTO
+    # ---------------------------------------------------------
+    - name: 8.1 e 8.2 Criar e Copiar pasta do servico da localidade e Gerenciador
+      ansible.windows.win_copy:
+        src: "{{ rede_servicos }}\\{{ item }}\\"
+        dest: "{{ dir_servicos }}\\{{ item }}\\"
+        remote_src: yes
+      loop:
+        - "{{ prefixo }}"
+        - "Gerenciador"
+
+    - name: 8.3 e 9. Copiar pasta de Arquivos Comuns
+      ansible.windows.win_copy:
+        src: "{{ rede_arquivos_comuns }}\\"
+        dest: "{{ dir_arquivos_comuns }}\\"
+        remote_src: yes
+
+    - name: 10. Compartilhar pasta Energisa Arquivos Comuns (SVC-DISCO)
+      ansible.windows.win_share:
+        name: Energisa_Arquivos_Comuns
+        path: "{{ dir_arquivos_comuns }}"
+        full: SVC-DISCO
+
+    # ---------------------------------------------------------
+    # PASSO 13: INSTALAÇÃO DO ORACLE CLIENT
+    # ---------------------------------------------------------
+    - name: 13.1 Criar estrutura de pastas do Oracle dinamicamente
+      ansible.windows.win_file:
+        path: "{{ dir_oracle_base }}\\Ora{{ oracle_version }}1"
+        state: directory
+
+    - name: 13.2 Copiar instalador do Oracle para pasta temp
+      ansible.windows.win_copy:
+        src: "{{ rede_oracle_instalador }}\\"
+        dest: "{{ dir_temp }}\\Oracle_Client{{ oracle_version }}c\\"
+        remote_src: yes
+
+    - name: 13.3 Instalar Oracle Client silenciosamente
+      ansible.windows.win_command: >
+        {{ dir_temp }}\Oracle_Client{{ oracle_version }}c\setup.exe -silent -responseFile {{ dir_temp }}\Oracle_Client{{ oracle_version }}c\client.rsp
+
+    # ---------------------------------------------------------
+    # PASSO 14: CONFIGURAR REGISTRO ORACLE
+    # ---------------------------------------------------------
+    - name: 14. Configurar NLS_LANG no Regedit
+      ansible.windows.win_regedit:
+        path: HKLM:\SOFTWARE\ORACLE\KEY_OraClient{{ oracle_version }}Home1
+        name: NLS_LANG
+        data: "{{ oracle_nls_lang }}"
+        type: string
+
+    # ---------------------------------------------------------
+    # PASSO 15 E 16: TNS NAMES E COMPARTILHAMENTO ADMIN
+    # ---------------------------------------------------------
+    - name: 15. Copiar sqlnet.ora e tnsnames.ora
+      ansible.windows.win_copy:
+        src: "{{ rede_tns }}\\{{ item }}"
+        dest: "{{ dir_oracle_base }}\\Ora{{ oracle_version }}1\\network\\admin\\{{ item }}"
+        remote_src: yes
+      loop:
+        - sqlnet.ora
+        - tnsnames.ora
+
+    - name: 16. Compartilhar pasta Oracle admin como tnsname$
+      ansible.windows.win_share:
+        name: tnsname$
+        path: "{{ dir_oracle_base }}\\Ora{{ oracle_version }}1\\network\\admin"
+        change: Everyone
