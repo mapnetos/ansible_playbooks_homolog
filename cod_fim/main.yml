@@ -1,0 +1,35 @@
+---
+# ==============================================================================
+# ORQUESTRADOR PRINCIPAL - PROVISIONAMENTO POWERBUILDER
+# ==============================================================================
+# Arquitetura: Master Playbook (Maestro).
+# Objetivo: Encadeamento logico e sequencial de todas as fases do projeto.
+# Estrategia: Segregacao por playbooks independentes (alta coesao, baixo acoplamento).
+# 
+# Uso em Producao: 
+# Sempre utilize a flag --limit para restringir a execucao a maquinas especificas
+# e evitar impacto global no Datacenter.
+# Exemplo: ansible-playbook -i hosts main.yml --limit NOME_DA_MAQUINA
+#
+# Ordem de execução:
+# 1. 01-config-inicial.yml  → fuso, firewall, pasta temp
+# 2. 02-oracle.yml          → Oracle Client e TNS Names
+# 3. 03-servicos.yml        → pastas e serviços PowerBuilder
+# 4. 04-monitoramento.yml   → Metricbeat e Zabbix
+# 5. 05-atualizacao-reboot.yml   → Atualizacoes e Reinicializacoes
+# ==============================================================================
+
+- name: "FASE 1 - Configuracao Base do Servidor (Fuso, Regiao, Temp e Firewall)"
+  ansible.builtin.import_playbook: 01-config-inicial.yml
+
+#- name: "FASE 2 - Instalacao e Configuracao Dinamica do Oracle Client"
+#  ansible.builtin.import_playbook: 02-oracle.yml
+#
+#- name: "FASE 3 - Implantacao de Servicos PowerBuilder, Registros e Rede"
+#  ansible.builtin.import_playbook: 03-servicos.yml
+#
+#- name: "FASE 4 - Instalacao de Agentes de Monitoramento"
+#  ansible.builtin.import_playbook: 04-monitoramento.yml
+
+- name: "FASE 5 - Ciclo de Atualizacao e Reinicializacao Geral de Seguranca"
+  ansible.builtin.import_playbook: 05-atualizacao-reboot.yml
