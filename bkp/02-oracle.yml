@@ -1,0 +1,63 @@
+---
+# ==============================================================================
+# PLAYBOOK: FASE 2 - INSTALACAO DO ORACLE CLIENT
+# ==============================================================================
+# Objetivo: Provisionar o cliente de banco de dados e arquivos de rede (TNS).
+# Dependencia: Acesso aos caminhos de rede UNC do fileserver.
+# ==============================================================================
+- name: Fase 2 - Instalacao e Configuracao do Oracle
+  hosts: all
+  gather_facts: no
+
+  vars:
+    oracle_version: "12"
+    oracle_nls_lang: "AMERICAN_AMERICA.WE8DEC"
+    dir_temp: "C:\\temp"
+    dir_oracle_base: "C:\\Oracle"
+    rede_oracle_instalador: "\\\\fileserver\\dsl\\02APLICATIVOS\\Oracle_Client{{ oracle_version }}c\\cliente{{ oracle_version }}cx64"
+    rede_tns: "\\\\MGDCS10001\\netlogon\\oracle"
+
+  tasks:
+    # ---------------------------------------------------------
+    # PASSO 13: INSTALACAO DO ORACLE CLIENT
+    # ---------------------------------------------------------
+    - name: 13.1 Criar estrutura de pastas do Oracle dinamicamente
+      ansible.windows.win_file:
+        path: "{{ dir_oracle_base }}\\Ora{{ oracle_version }}1"
+        state: directory
+
+    - name: 13.2 Copiar instalador do Oracle para pasta temp local
+      ansible.windows.win_copy:
+        src: "{{ rede_oracle_instalador }}\\"
+        dest: "{{ dir_temp }}\\Oracle_Client{{ oracle_version }}c\\"
+        remote_src: yes
+
+    # Execucao silenciosa (unattended) via arquivo de resposta (.rsp)
+    - name: 13.3 Instalar Oracle Client silenciosamente
+      ansible.windows.win_command: >
+        {{ dir_temp }}\Oracle_Client{{ oracle_version }}c\setup.exe -silent -responseFile {{ dir_temp }}\Oracle_Client{{ oracle_version }}c\client.rsp
+
+    # ---------------------------------------------------------
+    # PASSO 14 a 16: CONFIGURACAO NLS_LANG E REDE ORACLE
+    # ---------------------------------------------------------
+    - name: 14. Configurar NLS_LANG no Regedit para evitar problemas de encoding
+      ansible.windows.win_regedit:
+        path: HKLM:\SOFTWARE\ORACLE\KEY_OraClient{{ oracle_version }}Home1
+        name: NLS_LANG
+        data: "{{ oracle_nls_lang }}"
+        type: string
+
+    - name: 15. Copiar arquivos de conexao sqlnet.ora e tnsnames.ora
+      ansible.windows.win_copy:
+        src: "{{ rede_tns }}\\{{ item }}"
+        dest: "{{ dir_oracle_base }}\\Ora{{ oracle_version }}1\\network\\admin\\{{ item }}"
+        remote_src: yes
+      loop:
+        - sqlnet.ora
+        - tnsnames.ora
+
+    - name: 16. Compartilhar pasta Oracle admin como tnsname$
+      ansible.windows.win_share:
+        name: tnsname$
+        path: "{{ dir_oracle_base }}\\Ora{{ oracle_version }}1\\network\\admin"
+        change: Everyone

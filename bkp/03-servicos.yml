@@ -1,0 +1,63 @@
+---
+# ==============================================================================
+# PLAYBOOK: FASE 3 - SERVICOS POWERBUILDER E COMPARTILHAMENTOS
+# ==============================================================================
+# Objetivo: Injetar chaves de registro legadas e copiar arquivos do PowerBuilder.
+# Estrategia: Arquitetura autonoma e uso de staging local para arquivos sensiveis.
+# ==============================================================================
+- name: Fase 3 - Servicos PowerBuilder e Compartilhamentos
+  hosts: all
+  gather_facts: no
+
+  vars:
+    dir_temp: "C:\\temp"
+    dir_servicos: "C:\\Servicos_Energisa"
+    dir_arquivos_comuns: "C:\\Energisa_Arquivos_Comuns"
+    rede_servicos: "\\\\mgserviaplh1\\c$\\Servicos_Energisa" #mgserviaplh1
+    rede_arquivos_comuns: "\\\\acserviaplh3\\c$\\Energisa_Arquivos_Comuns" #acserviaplh3
+
+  tasks:
+    # Garante que o playbook possa ser executado de forma isolada, caso necessario
+    - name: "Garantir variavel de prefixo (ex EMT, EAC) para esta fase"
+      ansible.builtin.set_fact:
+        prefixo: "{{ inventory_hostname[0:3] | upper }}"
+
+    # ---------------------------------------------------------
+    # PASSO 4: REGISTRO CFLCL E REDE (COM STAGING LOCAL)
+    # ---------------------------------------------------------
+    - name: 4.1 Copiar arquivo de registro para a pasta temp local
+      ansible.windows.win_copy:
+        src: "{{ rede_servicos }}\\Registros_Base\\CFLCL_{{ prefixo }}.reg"
+        dest: "{{ dir_temp }}\\CFLCL_{{ prefixo }}.reg"
+        remote_src: yes
+
+    - name: 4.2 Importar chaves de registro CFLCL localmente via reg.exe
+      ansible.windows.win_shell: 
+        reg.exe import "{{ dir_temp }}\CFLCL_{{ prefixo }}.reg"
+
+    # ---------------------------------------------------------
+    # PASSO 8 E 9: COPIA DE APLICATIVOS (LOCAL E GERENCIADOR)
+    # ---------------------------------------------------------
+    - name: 8.1 e 8.2 Criar e Copiar pasta do servico da localidade e Gerenciador
+      ansible.windows.win_copy:
+        src: "{{ rede_servicos }}\\{{ item }}\\"
+        dest: "{{ dir_servicos }}\\{{ item }}\\"
+        remote_src: yes
+      loop:\
+        - "{{ prefixo }}"
+        - "Gerenciador"
+
+    - name: 8.3 e 9. Copiar pasta de Arquivos Comuns do file server
+      ansible.windows.win_copy:
+        src: "{{ rede_arquivos_comuns }}\\"
+        dest: "{{ dir_arquivos_comuns }}\\"
+        remote_src: yes
+
+    # ---------------------------------------------------------
+    # PASSO 10: PERMISSOES E COMPARTILHAMENTOS FINAIS
+    # ---------------------------------------------------------
+    - name: 10. Compartilhar pasta Energisa Arquivos Comuns (Acesso SVC-DISCO)
+      ansible.windows.win_share:
+        name: Energisa_Arquivos_Comuns
+        path: "{{ dir_arquivos_comuns }}"
+        full: SVC-DISCO
