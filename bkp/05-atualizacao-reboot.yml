@@ -1,0 +1,43 @@
+---
+- name: Fase 5 - Atualizacao e Reinicializacao Final do Servidor
+  hosts: POC-Powerbuilder
+  gather_facts: no
+
+  # =========================================================
+  # VARIAVEIS DE CONTROLE EXCLUSIVAS DO CICLO FINAL
+  # =========================================================
+  vars:
+    # Defina como 'yes' para instalar ou 'no' para apenas buscar
+    atualizar_windows: no
+    
+    # Defina como 'yes' para permitir que o servidor reinicie
+    permitir_reboot: no
+
+  tasks:
+    # ---------------------------------------------------------
+    # PROCESSO DE ATUALIZACAO LOGISTICA
+    # ---------------------------------------------------------
+    - name: "5.1 Executar varredura/instalacao no Windows Update (Atualizar: {{ atualizar_windows }})"
+      ansible.windows.win_updates:
+        category_names:
+          - SecurityUpdates
+          - CriticalUpdates
+          - UpdateRollups
+          - DefinitionUpdates
+        state: "{{ 'installed' if atualizar_windows | bool else 'searched' }}"
+        reboot: "{{ permitir_reboot | bool if atualizar_windows | bool else false }}"
+        reboot_timeout: 3600
+      register: resultado_updates
+
+    - name: 5.2 Apresentar relatorio de pacotes processados
+      ansible.builtin.debug:
+        msg: "O motor do Windows Update retornou um total de {{ resultado_updates.found_update_count | default(0) }} pacotes mapeados."
+
+    # ---------------------------------------------------------
+    # REBOOT ESTRUTURAL (Garante a aplicacao de registros e TNS)
+    # ---------------------------------------------------------
+    - name: 5.3 Forcar reinicializacao final para consolidacao do ambiente
+      ansible.windows.win_reboot:
+        reboot_timeout: 900
+        msg: "Reinicializacao automatica disparada pelo Ansible AAP para finalizar o deploy do PowerBuilder."
+      when: permitir_reboot | bool
