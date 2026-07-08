@@ -1,26 +1,29 @@
----
 # ============================================================
 # main.yml - PowerBuilder
 # ============================================================
-# Playbook principal que chama todos os outros em sequência
-# Execute esse arquivo para rodar a configuração completa
-#
-# Ordem de execução:
-# 1. 01-config-inicial.yml  → fuso, firewall, pasta temp
-# 2. 02-oracle.yml          → Oracle Client e TNS Names
-# 3. 03-servicos.yml        → pastas e serviços PowerBuilder
-# 4. 04-monitoramento.yml   → Metricbeat e Zabbix
+# Orquestrador: importa as 5 fases do deploy PowerBuilder na
+# ordem correta. Cada fase é idempotente e pode também ser
+# rodada isoladamente, se necessário, apontando direto pro
+# arquivo da fase.
+# ============================================================
+# Fase 1: Configuração base do servidor (fuso, região, firewall, C:\temp)
+# Fase 2: Instalação e configuração do Oracle Client
+# Fase 3: Serviços PowerBuilder (registro CFLCL, pastas, compartilhamentos)
+# Fase 4: Agentes de monitoramento (Metricbeat, Zabbix)
+# Fase 5: Atualização do Windows e reinicialização final (único reboot)
 # ============================================================
 
----
-- name: "FASE 1 | Configuração Inicial"
-  import_playbook: 01-config-inicial.yml
+- name: "Fase 1 - Configuração Base do Servidor"
+  ansible.builtin.import_playbook: 01-config-inicial.yml
 
-- name: "FASE 2 | Oracle Client"
-  import_playbook: 02-oracle.yml
+- name: "Fase 2 - Instalação e Configuração do Oracle Client"
+  ansible.builtin.import_playbook: 02-oracle.yml
 
-- name: "FASE 3 | Serviços PowerBuilder"
-  import_playbook: 03-servicos.yml
+- name: "Fase 3 - Serviços PowerBuilder e Compartilhamentos"
+  ansible.builtin.import_playbook: 03-servicos.yml
 
-- name: "FASE 4 | Monitoramento"
-  import_playbook: 04-monitoramento.yml
+- name: "Fase 4 - Agentes de Monitoramento"
+  ansible.builtin.import_playbook: 04-monitoramento.yml
+
+- name: "Fase 5 - Atualização e Reinicialização Final"
+  ansible.builtin.import_playbook: 05-atualizacao-reboot.yml

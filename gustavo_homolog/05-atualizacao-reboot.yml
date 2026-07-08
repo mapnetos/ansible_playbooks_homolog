@@ -1,0 +1,45 @@
+# ============================================================
+# 05-atualizacao-reboot.yml - PowerBuilder
+# ============================================================
+# Fase 5: Atualização do Windows e reinicialização final
+# Passo: 11 (verificar/instalar atualizações Windows)
+# ============================================================
+- name: Fase 5 - Atualização e Reinicialização Final do Servidor
+  hosts: POC-Powerbuilder
+  gather_facts: no
+
+  vars:
+    # 'yes' para instalar atualizações; 'no' para apenas buscar/listar
+    atualizar_windows: no
+
+    # 'yes' para permitir que o servidor reinicie ao final
+    permitir_reboot: no
+
+  tasks:
+    # ----------------------------------------------------------
+    # PASSO 11 — Buscar/instalar atualizações do Windows
+    # ----------------------------------------------------------
+    - name: "5.1 | Executar varredura/instalação no Windows Update (Atualizar: {{ atualizar_windows }})"
+      ansible.windows.win_updates:
+        category_names:
+          - SecurityUpdates
+          - CriticalUpdates
+          - UpdateRollups
+          - DefinitionUpdates
+        state: "{{ 'installed' if atualizar_windows | bool else 'searched' }}"
+        reboot: "{{ permitir_reboot | bool if atualizar_windows | bool else false }}"
+        reboot_timeout: 3600
+      register: resultado_updates
+
+    - name: "5.2 | Apresentar relatório de pacotes processados"
+      ansible.builtin.debug:
+        msg: "O motor do Windows Update retornou um total de {{ resultado_updates.found_update_count | default(0) }} pacotes mapeados."
+
+    # ----------------------------------------------------------
+    # REBOOT ESTRUTURAL — único reboot de todo o processo
+    # ----------------------------------------------------------
+    - name: "5.3 | Forçar reinicialização final para consolidação do ambiente"
+      ansible.windows.win_reboot:
+        reboot_timeout: 900
+        msg: "Reinicialização automática disparada pelo Ansible AAP para finalizar o deploy do PowerBuilder."
+      when: permitir_reboot | bool

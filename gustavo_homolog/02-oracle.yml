@@ -1,85 +1,86 @@
----
-# ============================================================
+# ==============================================================================
 # 02-oracle.yml - PowerBuilder
-# ============================================================
+# ==============================================================================
 # Fase 2: Instalação e configuração do Oracle Client
 # Passos: 13 (instalar Oracle), 14 (configurar registro),
 #         15 (copiar TNS Names), 16 (compartilhar pasta)
-# ============================================================
+# ==============================================================================
 
-- name: Instalação e Configuração do Oracle Client
+- name: Fase 2 - Instalação e Configuração do Oracle Client
   hosts: POC-Powerbuilder
-  gather_facts: yes
+  gather_facts: no
 
   vars:
-    # Versão do Oracle Client: "12C" ou "19C"
-    oracle_versao: "12C"
+    # Versão do Oracle Client, sem sufixo de letra (ex: "12", "19")
+    oracle_version: "12"
+    oracle_nls_lang: "AMERICAN_AMERICA.WE8DEC"
 
-    # Pasta Oracle gerada automaticamente pela versão
-    oracle_pasta: "{{ 'ora121' if oracle_versao == '12C' else 'ora191' }}"
+    dir_temp: "C:\\temp"
+    dir_oracle_base: "C:\\Oracle"
+    dir_oracle_home: "{{ dir_oracle_base }}\\Ora{{ oracle_version }}1"
 
-    # Caminho base do Oracle no servidor
-    oracle_base: "C:\\oracle\\{{ oracle_pasta }}"
-
-    # Servidor onde estão os arquivos TNS atualizados
-    # Alterar de acordo com a região
-    servidor_tns: "\\\\MGDSC\\NETLOGON\\Oracle"
+    # Caminho de rede com o instalador (ajustar conforme fileserver correto)
+    rede_oracle_instalador: "\\\\MGDSC\\instaladores\\Oracle\\{{ oracle_version }}C"
+    # Servidor com os arquivos TNS atualizados — ajustar por região se necessário
+    rede_tns: "\\\\MGDSC\\NETLOGON\\Oracle"
 
   tasks:
-
     # ----------------------------------------------------------
     # PASSO 13 — Instalar Oracle Client
     # ----------------------------------------------------------
-    - name: "Passo 13 | Criar estrutura de pastas do Oracle"
+    - name: "13.1 | Criar estrutura de pastas do Oracle"
       ansible.windows.win_file:
-        path: "{{ oracle_base }}"
+        path: "{{ dir_oracle_home }}"
         state: directory
 
-    - name: "Passo 13 | Instalar Oracle Client {{ oracle_versao }}"
-      ansible.windows.win_package:
-        path: "\\\\MGDSC\\instaladores\\Oracle\\{{ oracle_versao }}\\setup.exe"
-        arguments:
-          - "-silent"
-          - "-responseFile"
-          - "\\\\MGDSC\\instaladores\\Oracle\\{{ oracle_versao }}\\response.rsp"
-        state: present
-      # Ignora erro se Oracle já estiver instalado
-      ignore_errors: yes
+    - name: "13.2 | Copiar instalador do Oracle para pasta temp local"
+      ansible.windows.win_copy:
+        src: "{{ rede_oracle_instalador }}\\"
+        dest: "{{ dir_temp }}\\Oracle_Client{{ oracle_version }}c\\"
+        remote_src: yes
+
+    # Instalador copiado localmente antes de executar — evita falhas de
+    # instaladores legados que não lidam bem com paths UNC durante o setup.
+    - name: "13.3 | Instalar Oracle Client silenciosamente"
+      ansible.windows.win_command: >
+        {{ dir_temp }}\Oracle_Client{{ oracle_version }}c\setup.exe -silent -responseFile {{ dir_temp }}\Oracle_Client{{ oracle_version }}c\client.rsp
+      args:
+        creates: "{{ dir_oracle_home }}\\bin\\sqlplus.exe"
+      # 'creates' garante idempotência real: só instala se o binário
+      # ainda não existir, em vez de rodar o setup a cada execução.
 
     # ----------------------------------------------------------
     # PASSO 14 — Configurar registro Oracle (NLS_LANG)
     # ----------------------------------------------------------
-    - name: "Passo 14 | Configurar NLS_LANG no registro Oracle"
+    # Caminho SEM WOW6432Node — confirmado no servidor real como client 64-bit.
+    - name: "14 | Configurar NLS_LANG no registro Oracle"
       ansible.windows.win_regedit:
-        path: "HKLM:\\SOFTWARE\\WOW6432Node\\ORACLE\\KEY_OraClient{{ oracle_versao }}_home1"
+        path: "HKLM:\\SOFTWARE\\ORACLE\\KEY_OraClient{{ oracle_version }}Home1"
         name: NLS_LANG
-        data: "AMERICAN_AMERICA.WE8DEC"
+        data: "{{ oracle_nls_lang }}"
         type: string
-      # NLS_LANG precisa ser AMERICAN — não Brasil
-      # Sem isso o banco de dados não se comunica corretamente
 
     # ----------------------------------------------------------
     # PASSO 15 — Copiar TNS Names e SQL.ora
     # ----------------------------------------------------------
-    - name: "Passo 15 | Copiar arquivo tnsnames.ora"
+    - name: "15 | Copiar arquivos de conexão sqlnet.ora e tnsnames.ora"
       ansible.windows.win_copy:
-        src: "{{ servidor_tns }}\\tnsnames.ora"
-        dest: "{{ oracle_base }}\\network\\admin\\tnsnames.ora"
+        src: "{{ rede_tns }}\\{{ item }}"
+        dest: "{{ dir_oracle_home }}\\network\\admin\\{{ item }}"
         remote_src: yes
-
-    - name: "Passo 15 | Copiar arquivo sqlnet.ora"
-      ansible.windows.win_copy:
-        src: "{{ servidor_tns }}\\sqlnet.ora"
-        dest: "{{ oracle_base }}\\network\\admin\\sqlnet.ora"
-        remote_src: yes
+      loop:
+        - sqlnet.ora
+        - tnsnames.ora
 
     # ----------------------------------------------------------
     # PASSO 16 — Compartilhar pasta Oracle\admin como tnsname$
     # ----------------------------------------------------------
-    - name: "Passo 16 | Compartilhar pasta admin como tnsname$"
+    # Cifrão no final deixa o compartilhamento oculto.
+    # 'change' em vez de 'full': permite ler/escrever, não permite
+    # alterar permissões do compartilhamento — mais restritivo e seguro.
+    - name: "16 | Compartilhar pasta admin como tnsname$"
       ansible.windows.win_share:
         name: "tnsname$"
-        path: "{{ oracle_base }}\\network\\admin"
+        path: "{{ dir_oracle_home }}\\network\\admin"
         state: present
-        # Cifrão no final deixa o compartilhamento oculto
-        full: Everyone
+        change: Everyone
